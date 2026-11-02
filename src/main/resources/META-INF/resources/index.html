@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Agendamento de Manicure</title>
+    <style>
+        /* Estilo simples: um cartão centralizado, cores suaves */
+        body {
+            font-family: Arial, sans-serif;
+            background: #fdf2f6;
+            margin: 0;
+            padding: 24px;
+            color: #3a2a33;
+        }
+
+        .cartao {
+            max-width: 520px;
+            margin: 0 auto;
+            background: #fff;
+            padding: 24px;
+            border-radius: 14px;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, .08);
+        }
+
+        h1 {
+            margin-top: 0;
+            font-size: 1.5rem;
+            color: #b0366b;
+        }
+
+        label {
+            display: block;
+            margin: 16px 0 6px;
+            font-weight: bold;
+        }
+
+        select,
+        input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #d8c4cd;
+            border-radius: 8px;
+            font-size: 1rem;
+            box-sizing: border-box;
+        }
+
+        #horarios {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .hora {
+            padding: 8px 14px;
+            border: 1px solid #b0366b;
+            background: #fff;
+            color: #b0366b;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.95rem;
+        }
+
+        .hora.selecionada {
+            background: #b0366b;
+            color: #fff;
+        }
+
+        button.confirmar {
+            width: 100%;
+            margin-top: 20px;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            background: #b0366b;
+            color: #fff;
+            font-size: 1rem;
+            cursor: pointer;
+        }
+
+        button.confirmar:disabled {
+            background: #cfa9bb;
+            cursor: not-allowed;
+        }
+
+        #mensagem {
+            margin-top: 16px;
+            padding: 12px;
+            border-radius: 8px;
+            display: none;
+        }
+
+        #mensagem.ok {
+            display: block;
+            background: #e6f6ea;
+            color: #1d6b34;
+        }
+
+        #mensagem.erro {
+            display: block;
+            background: #fde8e8;
+            color: #a12626;
+        }
+
+        .aviso {
+            color: #7a6670;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="cartao">
+        <h1>Agende sua manicure</h1>
+
+        <label for="servico">Serviço</label>
+        <select id="servico"></select>
+
+        <label for="data">Dia</label>
+        <input type="date" id="data">
+
+        <label>Horários disponíveis</label>
+        <div id="horarios"><span class="aviso">Escolha o serviço e o dia.</span></div>
+
+        <label for="nome">Seu nome</label>
+        <input type="text" id="nome" placeholder="Maria Silva">
+
+        <label for="telefone">Telefone</label>
+        <input type="tel" id="telefone" placeholder="63 99999-9999">
+
+        <button class="confirmar" id="confirmar" disabled>Confirmar agendamento</button>
+        <div id="mensagem"></div>
+    </div>
+
+    <script>
+        // Guarda o horário que o cliente clicou (ex.: "10:00"). Vazio = nenhum.
+        let horarioEscolhido = "";
+
+        // Atalho para pegar elementos da página pelo id
+        const $ = (id) => document.getElementById(id);
+
+        /** Mostra uma mensagem verde (ok) ou vermelha (erro) */
+        function mostrarMensagem(texto, tipo) {
+            const caixa = $("mensagem");
+            caixa.textContent = texto;
+            caixa.className = tipo; // "ok" ou "erro"
+        }
+
+        /** Passo 1: busca os serviços e preenche o seletor */
+        async function carregarServicos() {
+            const resposta = await fetch("/servicos");
+            const servicos = await resposta.json();
+            $("servico").innerHTML = servicos.map(s =>
+                `<option value="${s.id}">${s.nome} - ${s.duracaoMinutos} min - R$ ${s.preco.toFixed(2).replace(".", ",")}</option>`
+            ).join("");
+        }
+
+        /** Passo 2: busca os horários livres do dia e cria um botão para cada um */
+        async function carregarHorarios() {
+            horarioEscolhido = "";
+            atualizarBotao();
+
+            const data = $("data").value;
+            const servicoId = $("servico").value;
+            if (!data || !servicoId) return;
+
+            const resposta = await fetch(`/horarios?data=${data}&servicoId=${servicoId}`);
+            const dados = await resposta.json();
+            const area = $("horarios");
+
+            if (!resposta.ok) {
+                area.innerHTML = `<span class="aviso">${dados.erro}</span>`;
+                return;
+            }
+            if (dados.horarios.length === 0) {
+                area.innerHTML = `<span class="aviso">Não há horários livres neste dia.</span>`;
+                return;
+            }
+
+            area.innerHTML = dados.horarios.map(h =>
+                `<button type="button" class="hora" data-hora="${h}">${h}</button>`
+            ).join("");
+
+            // Ao clicar em um horário, marca ele como escolhido
+            area.querySelectorAll(".hora").forEach(botao => {
+                botao.addEventListener("click", () => {
+                    area.querySelectorAll(".hora").forEach(b => b.classList.remove("selecionada"));
+                    botao.classList.add("selecionada");
+                    horarioEscolhido = botao.dataset.hora;
+                    atualizarBotao();
+                });
+            });
+        }
+
+        /** O botão de confirmar só liga quando há horário, nome e telefone */
+        function atualizarBotao() {
+            $("confirmar").disabled = !(horarioEscolhido && $("nome").value.trim() && $("telefone").value.trim());
+        }
+
+        /** Passo 3: envia o agendamento para a API */
+        async function confirmar() {
+            const corpo = {
+                nomeCliente: $("nome").value.trim(),
+                telefone: $("telefone").value.trim(),
+                servicoId: Number($("servico").value),
+                inicio: `${$("data").value}T${horarioEscolhido}:00` // ex.: 2026-11-10T10:00:00
+            };
+
+            const resposta = await fetch("/agendamentos", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(corpo)
+            });
+            const dados = await resposta.json();
+
+            if (resposta.ok) {
+                mostrarMensagem(`Agendamento confirmado para ${$("data").value.split("-").reverse().join("/")} às ${horarioEscolhido}. Até lá, ${corpo.nomeCliente}!`, "ok");
+            } else {
+                mostrarMensagem(dados.erro || "Não foi possível agendar.", "erro");
+            }
+            carregarHorarios(); // atualiza a lista, o horário agendado some
+        }
+
+        // Liga os eventos da página
+        $("servico").addEventListener("change", carregarHorarios);
+        $("data").addEventListener("change", carregarHorarios);
+        $("nome").addEventListener("input", atualizarBotao);
+        $("telefone").addEventListener("input", atualizarBotao);
+        $("confirmar").addEventListener("click", confirmar);
+
+        // Início: não deixa escolher dias passados e carrega os serviços
+        $("data").min = new Date().toISOString().split("T")[0];
+        carregarServicos();
+    </script>
+</body>
+
+</html>

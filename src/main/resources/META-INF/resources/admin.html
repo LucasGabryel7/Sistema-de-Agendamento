@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Painel da Manicure</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #fdf2f6;
+            margin: 0;
+            padding: 24px;
+            color: #3a2a33;
+        }
+
+        .cartao {
+            max-width: 720px;
+            margin: 0 auto;
+            background: #fff;
+            padding: 24px;
+            border-radius: 14px;
+            box-shadow: 0 2px 12px rgba(0, 0, 0, .08);
+        }
+
+        h1 {
+            margin-top: 0;
+            font-size: 1.5rem;
+            color: #b0366b;
+        }
+
+        label {
+            font-weight: bold;
+            margin-right: 8px;
+        }
+
+        input[type=date] {
+            padding: 8px;
+            border: 1px solid #d8c4cd;
+            border-radius: 8px;
+            font-size: 1rem;
+        }
+
+        .resumo {
+            margin: 16px 0;
+            color: #7a6670;
+        }
+
+        .item {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 12px;
+            border: 1px solid #f0dde6;
+            border-radius: 10px;
+            margin-bottom: 10px;
+        }
+
+        .item.cancelado {
+            opacity: .55;
+            background: #faf5f7;
+        }
+
+        .hora {
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: #b0366b;
+            min-width: 110px;
+        }
+
+        .info {
+            flex: 1;
+        }
+
+        .info small {
+            color: #7a6670;
+        }
+
+        .selo {
+            font-size: .8rem;
+            padding: 3px 10px;
+            border-radius: 12px;
+        }
+
+        .selo.confirmado {
+            background: #e6f6ea;
+            color: #1d6b34;
+        }
+
+        .selo.cancelado {
+            background: #fde8e8;
+            color: #a12626;
+        }
+
+        button.cancelar {
+            padding: 8px 12px;
+            border: 1px solid #a12626;
+            background: #fff;
+            color: #a12626;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        button.cancelar:hover {
+            background: #a12626;
+            color: #fff;
+        }
+
+        #mensagem {
+            margin-top: 12px;
+            padding: 10px;
+            border-radius: 8px;
+            display: none;
+        }
+
+        #mensagem.erro {
+            display: block;
+            background: #fde8e8;
+            color: #a12626;
+        }
+
+        .vazio {
+            color: #7a6670;
+            padding: 12px 0;
+        }
+
+        button.buscar {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            background: #b0366b;
+            color: #fff;
+            font-size: 1rem;
+            cursor: pointer;
+            margin-left: 8px;
+        }
+
+        button.buscar:hover {
+            background: #8f2956;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="cartao">
+        <h1>Painel da Manicure </h1>
+
+        <label for="data">Dia</label>
+        <input type="date" id="data">
+        <button type="button" id="buscar" class="buscar">Buscar</button>
+
+        <div class="resumo" id="resumo"></div>
+        <div id="lista"></div>
+        <div id="mensagem"></div>
+    </div>
+
+    <script>
+        const $ = (id) => document.getElementById(id);
+
+        /** Devolve a data de hoje no formato AAAA-MM-DD, usando o fuso do computador */
+        function hojeLocal() {
+            const d = new Date();
+            const mes = String(d.getMonth() + 1).padStart(2, "0");
+            const dia = String(d.getDate()).padStart(2, "0");
+            return `${d.getFullYear()}-${mes}-${dia}`;
+        }
+
+        /** Pega "2026-11-10T10:00:00" e devolve "10:00" */
+        function soHora(textoDataHora) {
+            return textoDataHora.substring(11, 16);
+        }
+
+        /** Busca os agendamentos do dia escolhido e desenha a lista */
+        async function carregar() {
+            const data = $("data").value;
+            $("mensagem").className = "";
+            if (!data) return;
+
+            const resposta = await fetch(`/agendamentos?data=${data}`);
+            if (!resposta.ok) {
+                $("lista").innerHTML = "";
+                $("mensagem").textContent = "Não foi possível carregar os agendamentos.";
+                $("mensagem").className = "erro";
+                return;
+            }
+            const agendamentos = await resposta.json();
+
+            const confirmados = agendamentos.filter(a => a.status === "CONFIRMADO").length;
+            $("resumo").textContent = `${confirmados} agendamento(s) confirmado(s) neste dia.`;
+
+            const lista = $("lista");
+            lista.innerHTML = "";
+
+            if (agendamentos.length === 0) {
+                lista.innerHTML = `<div class="vazio">Nenhum agendamento neste dia.</div>`;
+                return;
+            }
+
+            agendamentos.forEach(a => {
+                const cancelado = a.status === "CANCELADO";
+
+                const item = document.createElement("div");
+                item.className = "item" + (cancelado ? " cancelado" : "");
+
+                // Horário (início - fim)
+                const hora = document.createElement("div");
+                hora.className = "hora";
+                hora.textContent = `${soHora(a.inicio)} - ${soHora(a.fim)}`;
+
+                // Cliente e serviço. Usamos textContent (e não innerHTML) de propósito:
+                // assim, um nome com símbolos estranhos nunca vira código na página.
+                const info = document.createElement("div");
+                info.className = "info";
+                const nome = document.createElement("strong");
+                nome.textContent = a.nomeCliente;
+                const detalhe = document.createElement("small");
+                detalhe.textContent = `${a.servico.nome} - ${a.telefone}`;
+                info.append(nome, document.createElement("br"), detalhe);
+
+                // Selo de status
+                const selo = document.createElement("span");
+                selo.className = "selo " + (cancelado ? "cancelado" : "confirmado");
+                selo.textContent = cancelado ? "Cancelado" : "Confirmado";
+
+                item.append(hora, info, selo);
+
+                // Botão de cancelar, só para os que ainda estão confirmados
+                if (!cancelado) {
+                    const botao = document.createElement("button");
+                    botao.className = "cancelar";
+                    botao.textContent = "Cancelar";
+                    botao.addEventListener("click", () => cancelar(a));
+                    item.append(botao);
+                }
+
+                lista.append(item);
+            });
+        }
+
+        /** Pede confirmação e cancela o agendamento pela API */
+        async function cancelar(agendamento) {
+            const ok = confirm(`Cancelar o agendamento de ${agendamento.nomeCliente} às ${soHora(agendamento.inicio)}?`);
+            if (!ok) return;
+
+            const resposta = await fetch(`/agendamentos/${agendamento.id}`, { method: "DELETE" });
+            if (!resposta.ok) {
+                $("mensagem").textContent = "Não foi possível cancelar.";
+                $("mensagem").className = "erro";
+                return;
+            }
+            carregar(); // recarrega a lista para mostrar o novo status
+        }
+
+        // Busca ao clicar no botão e também quando a data muda
+        $("buscar").addEventListener("click", carregar);
+        $("data").addEventListener("change", carregar);
+        $("data").addEventListener("input", carregar);
+        $("data").value = hojeLocal();
+        carregar();
+    </script>
+</body>
+
+</html>
