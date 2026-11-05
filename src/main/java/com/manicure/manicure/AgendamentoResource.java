@@ -1,5 +1,4 @@
-package com.manicure.manicure
-;
+package com.manicure.manicure;
 
 import jakarta.transaction.Transactional;
 import jakarta.ws.rs.*;
